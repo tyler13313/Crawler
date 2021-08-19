@@ -1,3 +1,4 @@
+import { parse } from "node-html-parser";
 import axios, { AxiosError } from "axios";
 import { CrawlerCoordinator } from "./crawlerCoordinator";
 
@@ -35,37 +36,38 @@ export class Crawler {
     }
   }
   private async parseContent(): Promise<void> {
+    console.log(this.content);
     if (!this.content) {
       return;
     }
-    try {
-      const anchors = this.content.match(
-        /<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1>/gi
-      );
+    const html = parse(this.content);
+    const anchors = html.querySelectorAll("a");
 
-      if (!anchors) {
+    anchors.forEach((anchor) => {
+      const href = anchor.getAttribute("href");
+      if (!href) {
         return;
       }
-      anchors.forEach((anchor) => {
-        const matched = anchor.match(
-          /href=('|")(((http|ftp|https):\/\/)|(\/))*[\w-]+(\.[\w-]+)*([\w.,@?^=%&amp;:/~+#-]*[\w@?^=%&amp;/~+#-])?('|")/i //g=전체를 본다, i=대소문자 구분 안함
-        );
-        if (!matched) {
-          return null;
-        }
-        let url = matched[0]
-          .replace("href=", "")
-          .replace(/"/g, "")
-          .replace(/'/g, "");
 
-        if (url.startsWith("/")) {
-          url = this.host + url;
-        }
+      const matched = href.match(
+        /^(((http|ftp|https):\/\/)|(\/))*[\w-]+(\.[\w-]+)*([\w.,@?^=%&amp;:/~+#-]*[\w@?^=%&amp;/~+#-])?/i //g=전체를 본다, i=대소문자 구분 안함
+      );
 
-        this.coordinator.reportUrl(url);
-      });
-    } catch (error) {
-      console.log(error);
-    }
+      if (!matched) {
+        return null;
+      }
+
+      let url = matched[0];
+
+      if (url.startsWith("/")) {
+        url = this.host + url;
+      } else if (!href.startsWith("http")) {
+        url = this.host + "/" + url;
+      }
+
+      //this.coordinator.reportUrl(url);
+    });
+    html.text.replace(/\s{2,}/g, " ");
+    console.log(html.text);
   }
 }
