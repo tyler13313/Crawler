@@ -1,20 +1,34 @@
 import axios, { AxiosError } from "axios";
 import { CrawlerCoordinator } from "./crawlerCoordinator";
+import chardet from "chardet";
+import iconv from "iconv-lite";
+import { parse } from "node-html-parser";
+import { Script } from "vm";
 
 export class Crawler {
   private url: string;
-  private content?: string;
+  private content?: Buffer;
   private coordinator: CrawlerCoordinator;
   private host?: string;
+  private encoding?: string;
 
   public constructor(url: string, coordinator: CrawlerCoordinator) {
     this.url = url;
     this.coordinator = coordinator;
   }
-  private async fetch(): Promise<string | null> {
+  private async fetch(): Promise<Buffer | null> {
     try {
-      const { data, request } = await axios.get(this.url, { timeout: 3000 });
+      const { data, request } = await axios.get(this.url, {
+        timeout: 3000,
+        responseType: "arraybuffer",
+      });
       this.host = request.host;
+      const detectEncoding = this.detectEncoding(data);
+      if (!detectEncoding) {
+        return null;
+      }
+      this.encoding = detectEncoding;
+      console.log(this.encoding);
       return data;
     } catch (error) {
       if (error.isAxiosError) {
@@ -24,6 +38,11 @@ export class Crawler {
     }
     return null;
   }
+
+  private detectEncoding(data: Buffer): string | null {
+    return chardet.detect(data);
+  }
+
   public async trip(): Promise<void> {
     const result = await this.fetch();
     if (result) {
@@ -35,37 +54,42 @@ export class Crawler {
     }
   }
   private async parseContent(): Promise<void> {
-    if (!this.content) {
+    if (!this.content || !this.encoding) {
       return;
     }
-    try {
-      const anchors = this.content.match(
-        /<a\s+(?:[^>]*?\s+)?href=(["'])(.*?)\1>/gi
-      );
 
-      if (!anchors) {
+    const encodedContent = iconv.decode(this.content, this.encoding);
+    const html = parse(encodedContent);
+    const anchors = html.querySelectorAll("a");
+    const asdfs = html.querySelectorAll("script");
+
+    asdfs.forEach((asdf) => {
+      asdf.remove();
+    });
+
+    anchors.forEach((anchor) => {
+      const href = anchor.getAttribute("href");
+      if (!href) {
         return;
       }
-      anchors.forEach((anchor) => {
-        const matched = anchor.match(
-          /href=('|")(((http|ftp|https):\/\/)|(\/))*[\w-]+(\.[\w-]+)*([\w.,@?^=%&amp;:/~+#-]*[\w@?^=%&amp;/~+#-])?('|")/i //g=전체를 본다, i=대소문자 구분 안함
-        );
-        if (!matched) {
-          return null;
-        }
-        let url = matched[0]
-          .replace("href=", "")
-          .replace(/"/g, "")
-          .replace(/'/g, "");
 
-        if (url.startsWith("/")) {
-          url = this.host + url;
-        }
+      const matched = href.match(
+        /^(((http|ftp|https):\/\/)|(\/))*[\w-]+(\.[w-]+)*([\w.,@?^=%&amp;:/~+#-]*[\w.,@?^=%&amp;:/~+#-])?/i
+      );
 
-        this.coordinator.reportUrl(url);
-      });
-    } catch (error) {
-      console.log(error);
-    }
+      if (!matched) {
+        return null;
+      }
+
+      let url = matched[0];
+
+      if (url.startsWith("/")) {
+        url = this.host + url;
+      } else if (!href.startsWith("http")) {
+        url = this.host + "/" + url;
+      }
+    });
+
+    console.log(html.text.replace(/\s{2,}/g, " "));
   }
 }
