@@ -1,3 +1,4 @@
+import { parse } from "node-html-parser";
 import axios, { AxiosError } from "axios";
 import { CrawlerCoordinator } from "./crawlerCoordinator";
 import chardet from "chardet";

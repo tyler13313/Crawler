@@ -12,6 +12,6 @@ console.log(html.querySelector("a"));
 
 (async () => {
   const coordinator = new CrawlerCoordinator();
-  coordinator.reportUrl("https://naver.com");
+  coordinator.reportUrl("https://news.naver.com");
   await coordinator.start();
 })();
