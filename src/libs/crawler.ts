@@ -3,8 +3,9 @@ import axios, { AxiosError } from "axios";
 import { CrawlerCoordinator } from "./crawlerCoordinator";
 import chardet from "chardet";
 import iconv from "iconv-lite";
-import { parse } from "node-html-parser";
-import { Script } from "vm";
+import { initialize } from "koalanlp/Util";
+import { KMR } from "koalanlp/API";
+import { Tagger } from "koalanlp/proc";
 
 export class Crawler {
   private url: string;
@@ -90,7 +91,23 @@ export class Crawler {
         url = this.host + "/" + url;
       }
     });
+    const text = html.text.replace(/\s{2,}/g, " ");
+    await this.parseKeywords(text);
+  }
+  private async parseKeywords(text: string) {
+    await initialize({
+      packages: { KMR: "2.0.4", KKMA: "2.0.4" },
+      verbose: true,
+    });
 
-    console.log(html.text.replace(/\s{2,}/g, " "));
+    const tagger = new Tagger(KMR);
+    const tagged = await tagger(text);
+    for (const sent of tagged) {
+      for (const word of sent._items) {
+        for (const morpheme of word._items) {
+          if (morpheme._tag === "NNG") console.log(morpheme.toString());
+        }
+      }
+    }
   }
 }
