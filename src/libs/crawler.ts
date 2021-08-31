@@ -1,43 +1,35 @@
 import { parse } from "node-html-parser";
-import axios, { AxiosError } from "axios";
 import { CrawlerCoordinator } from "./crawlerCoordinator";
 import chardet from "chardet";
-import iconv from "iconv-lite";
-import { initialize } from "koalanlp/Util";
 import { KMR } from "koalanlp/API";
 import { Tagger } from "koalanlp/proc";
 
 export class Crawler {
   private url: string;
-  private content?: Buffer;
+  private content?: string;
   private coordinator: CrawlerCoordinator;
   private host?: string;
-  private encoding?: string;
 
   public constructor(url: string, coordinator: CrawlerCoordinator) {
     this.url = url;
     this.coordinator = coordinator;
   }
-  private async fetch(): Promise<Buffer | null> {
-    try {
-      const { data, request } = await axios.get(this.url, {
-        timeout: 3000,
-        responseType: "arraybuffer",
-      });
-      this.host = request.host;
-      const detectEncoding = this.detectEncoding(data);
-      if (!detectEncoding) {
-        return null;
-      }
-      this.encoding = detectEncoding;
-      console.log(this.encoding);
-      return data;
-    } catch (error) {
-      if (error.isAxiosError) {
-        const e: AxiosError = error;
-        console.error(e.response?.status);
-      }
+  private async fetch(): Promise<string | null> {
+    const browser = await this.coordinator.getBrowser().getInstance();
+    if(!browser)
+    {
+      return null;
     }
+    const page = await browser.newPage();
+    await page.goto(this.url);
+    const result = await page.content();
+
+    if(result)
+    {
+      this.content = result;
+      return this.content;
+    }
+
     return null;
   }
 
@@ -49,25 +41,18 @@ export class Crawler {
     const result = await this.fetch();
     if (result) {
       this.content = result;
-      //console.log(result);
       await this.parseContent();
     } else {
       console.log("Failed to get url data");
     }
   }
   private async parseContent(): Promise<void> {
-    if (!this.content || !this.encoding) {
+    if (!this.content) {
       return;
     }
 
-    const encodedContent = iconv.decode(this.content, this.encoding);
-    const html = parse(encodedContent);
+    const html = parse(this.content).querySelector("body");
     const anchors = html.querySelectorAll("a");
-    const asdfs = html.querySelectorAll("script");
-
-    asdfs.forEach((asdf) => {
-      asdf.remove();
-    });
 
     anchors.forEach((anchor) => {
       const href = anchor.getAttribute("href");
@@ -90,22 +75,21 @@ export class Crawler {
       } else if (!href.startsWith("http")) {
         url = this.host + "/" + url;
       }
+      this.coordinator.reportUrl(url);
     });
+
+    html.querySelectorAll("script").forEach((script) => script.remove());
+
     const text = html.text.replace(/\s{2,}/g, " ");
     await this.parseKeywords(text);
   }
   private async parseKeywords(text: string) {
-    await initialize({
-      packages: { KMR: "2.0.4", KKMA: "2.0.4" },
-      verbose: true,
-    });
-
     const tagger = new Tagger(KMR);
     const tagged = await tagger(text);
     for (const sent of tagged) {
       for (const word of sent._items) {
         for (const morpheme of word._items) {
-          if (morpheme._tag === "NNG") console.log(morpheme.toString());
+          if (morpheme._tag === "NNG"||morpheme._tag ==="NNP"||morpheme._tag ==="NNB"||morpheme._tag ==="NP"||morpheme._tag ==="NR"||morpheme._tag ==="VV"||morpheme._tag ==="SL") console.log(morpheme.toString());
         }
       }
     }
