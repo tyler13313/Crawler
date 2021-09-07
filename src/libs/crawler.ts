@@ -3,6 +3,7 @@ import { CrawlerCoordinator } from "./crawlerCoordinator";
 import chardet from "chardet";
 import { KMR } from "koalanlp/API";
 import { Tagger } from "koalanlp/proc";
+import { Keyword } from "../models/Keyword";
 
 export class Crawler {
   private url: string;
@@ -16,16 +17,14 @@ export class Crawler {
   }
   private async fetch(): Promise<string | null> {
     const browser = await this.coordinator.getBrowser().getInstance();
-    if(!browser)
-    {
+    if (!browser) {
       return null;
     }
     const page = await browser.newPage();
     await page.goto(this.url);
     const result = await page.content();
 
-    if(result)
-    {
+    if (result) {
       this.content = result;
       return this.content;
     }
@@ -75,7 +74,7 @@ export class Crawler {
       } else if (!href.startsWith("http")) {
         url = this.host + "/" + url;
       }
-      this.coordinator.reportUrl(url);
+      //this.coordinator.reportUrl(url);
     });
 
     html.querySelectorAll("script").forEach((script) => script.remove());
@@ -89,7 +88,27 @@ export class Crawler {
     for (const sent of tagged) {
       for (const word of sent._items) {
         for (const morpheme of word._items) {
-          if (morpheme._tag === "NNG"||morpheme._tag ==="NNP"||morpheme._tag ==="NNB"||morpheme._tag ==="NP"||morpheme._tag ==="NR"||morpheme._tag ==="VV"||morpheme._tag ==="SL") console.log(morpheme.toString());
+          if (
+            morpheme._tag === "NNG" ||
+            morpheme._tag === "NNP" ||
+            morpheme._tag === "NNB" ||
+            morpheme._tag === "NP" ||
+            morpheme._tag === "NR" ||
+            morpheme._tag === "VV" ||
+            morpheme._tag === "SL"
+          ) {
+            const exist = await Keyword.findOne({
+              where: {
+                name: morpheme._surface,
+              },
+            });
+
+            if (!exist) {
+              await Keyword.create({
+                name: morpheme._surface,
+              });
+            }
+          }
         }
       }
     }
