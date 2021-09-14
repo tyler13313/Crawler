@@ -88,7 +88,7 @@ export class Crawler {
     const tagger = new Tagger(KMR);
     const tagged = await tagger(text);
     const newKeywords: Set<string> = new Set();
-    const existKeywords: Keyword[]=[];
+    const existKeywords: Keyword[] = [];
 
     for (const sent of tagged) {
       for (const word of sent._items) {
@@ -105,50 +105,65 @@ export class Crawler {
             const keyword = morpheme._surface.toLowerCase();
             const exist = await Keyword.findOne({
               where: {
-                name: keyword
+                name: keyword,
               },
             });
 
             if (!exist) {
               newKeywords.add(keyword);
-            }else{
+            } else {
               existKeywords.push(exist);
             }
           }
         }
       }
     }
+    const existLink = await Link.findOne({
+      where: {
+        url: this.url,
+      },
+    });
     let newLink;
-    if(newKeywords.size>0)
-    {
-      const keywords = Array.from(newKeywords).map((keyword)=>{
-        return {name:keyword};
-      });
+    const keywords = Array.from(newKeywords).map((keyword) => {
+      return { name: keyword };
+    });
+    if (!existLink) {
       newLink = await Link.create(
         {
           url: this.url,
-          description: text.slice(0,512),
+          description: text.slice(0, 512),
           keywords: keywords,
         },
         {
           include: [Keyword],
         }
-      )
+      );
+    } else {
+      for (const keyword of keywords) {
+        const newKeyword = await Keyword.create(keyword);
+        await KeywordLink.create({
+          keywordId: newKeyword.id,
+          linkId: existLink.id,
+        });
+      }
     }
-    if(newLink)
-    {
-      const addedIds: Set<bigint> = new Set();
-      for(const keyword of existKeywords)
-      {
-        if(!addedIds.has(keyword.id)){
-          await KeywordLink.create({
-            keywordId: keyword.id,
-            linkId: newLink.id,
-          });
-          addedIds.add(keyword.id);
-        }
+    const linkId = existLink ? existLink.id : newLink.id;
+    const addedIds: Set<bigint> = new Set();
+    for (const keyword of existKeywords) {
+      const existRelation = await KeywordLink.findOne({
+        where: {
+          linkId: linkId,
+          keywordId: keyword.id,
+        },
+      });
+
+      if (!existRelation && !addedIds.has(keyword.id)) {
+        await KeywordLink.create({
+          keywordId: keyword.id,
+          linkId: linkId,
+        });
+        addedIds.add(keyword.id);
       }
     }
   }
 }
-
